@@ -682,89 +682,89 @@ void key_state_ssl_init(struct key_state_ssl *ks_ssl,
   CLEAR(*ks_ssl);
 
   ALLOC_OBJ_CLEAR(ks_ssl->ctx, ssl_context);
-  if (polar_ok(ssl_init(ks_ssl->ctx))) /* FIXME ASSERT() or propagate errors */
-    {
-      /* Initialise SSL context */
-      ssl_set_dbg (ks_ssl->ctx, my_debug, NULL);
-      ssl_set_endpoint (ks_ssl->ctx, ssl_ctx->endpoint);
 
-      ssl_set_rng (ks_ssl->ctx, ctr_drbg_random, rand_ctx_get());
+  ASSERT (polar_ok(ssl_init(ks_ssl->ctx)));
 
-      if (ssl_ctx->allowed_ciphers)
-	ssl_set_ciphersuites (ks_ssl->ctx, ssl_ctx->allowed_ciphers);
+  /* Initialise SSL context */
+  ssl_set_dbg (ks_ssl->ctx, my_debug, NULL);
+  ssl_set_endpoint (ks_ssl->ctx, ssl_ctx->endpoint);
 
-      /* Initialise authentication information */
-      if (is_server)
-	ASSERT (polar_ok(ssl_set_dh_param_ctx(ks_ssl->ctx, ssl_ctx->dhm_ctx)));
+  ssl_set_rng (ks_ssl->ctx, ctr_drbg_random, rand_ctx_get());
+
+  if (ssl_ctx->allowed_ciphers)
+    ssl_set_ciphersuites (ks_ssl->ctx, ssl_ctx->allowed_ciphers);
+
+  /* Initialise authentication information */
+  if (is_server)
+    ASSERT (polar_ok(ssl_set_dh_param_ctx(ks_ssl->ctx, ssl_ctx->dhm_ctx)));
 #if defined(ENABLE_PKCS11)
-      if (ssl_ctx->priv_key_pkcs11 != NULL)
-	ASSERT (polar_ok(ssl_set_own_cert_alt(ks_ssl->ctx, ssl_ctx->crt_chain,
-	    ssl_ctx->priv_key_pkcs11, ssl_pkcs11_decrypt, ssl_pkcs11_sign,
-	    ssl_pkcs11_key_len)));
-      else
+  if (ssl_ctx->priv_key_pkcs11 != NULL)
+    ASSERT (polar_ok(ssl_set_own_cert_alt(ks_ssl->ctx, ssl_ctx->crt_chain,
+	ssl_ctx->priv_key_pkcs11, ssl_pkcs11_decrypt, ssl_pkcs11_sign,
+	ssl_pkcs11_key_len)));
+  else
 #endif
 #if defined(MANAGMENT_EXTERNAL_KEY)
-      if (ssl_ctx->external_key != NULL)
-	ASSERT (polar_ok(ssl_set_own_cert_alt(ks_ssl->ctx, ssl_ctx->crt_chain,
-	   ssl_ctx->external_key, NULL, external_pkcs1_sign,
-	   external_key_len)));
-      else
+  if (ssl_ctx->external_key != NULL)
+    ASSERT (polar_ok(ssl_set_own_cert_alt(ks_ssl->ctx, ssl_ctx->crt_chain,
+       ssl_ctx->external_key, NULL, external_pkcs1_sign,
+       external_key_len)));
+  else
 #endif
-	ASSERT (polar_ok(ssl_set_own_cert( ks_ssl->ctx, ssl_ctx->crt_chain,
-	    ssl_ctx->priv_key )));
+    ASSERT (polar_ok(ssl_set_own_cert( ks_ssl->ctx, ssl_ctx->crt_chain,
+	ssl_ctx->priv_key )));
 
-      /* Initialise SSL verification */
+  /* Initialise SSL verification */
 #if P2MP_SERVER
-      if (session->opt->ssl_flags & SSLF_CLIENT_CERT_NOT_REQUIRED)
-	{
-	  msg (M_WARN, "WARNING: POTENTIALLY DANGEROUS OPTION "
-	   "--client-cert-not-required may accept clients which do not present "
-	   "a certificate");
-	}
-      else
+  if (session->opt->ssl_flags & SSLF_CLIENT_CERT_NOT_REQUIRED)
+    {
+      msg (M_WARN, "WARNING: POTENTIALLY DANGEROUS OPTION "
+       "--client-cert-not-required may accept clients which do not present "
+       "a certificate");
+    }
+  else
 #endif
-      {
-	ssl_set_authmode (ks_ssl->ctx, SSL_VERIFY_REQUIRED);
-	ssl_set_verify (ks_ssl->ctx, verify_callback, session);
-      }
+  {
+    ssl_set_authmode (ks_ssl->ctx, SSL_VERIFY_REQUIRED);
+    ssl_set_verify (ks_ssl->ctx, verify_callback, session);
+  }
 
-      /* TODO: PolarSSL does not currently support sending the CA chain to the client */
-      ssl_set_ca_chain (ks_ssl->ctx, ssl_ctx->ca_chain, NULL, NULL );
+  /* TODO: PolarSSL does not currently support sending the CA chain to the client */
+  ssl_set_ca_chain (ks_ssl->ctx, ssl_ctx->ca_chain, NULL, NULL );
 
-      /* Initialize minimum TLS version */
+  /* Initialize minimum TLS version */
+  {
+    const int tls_version_min = (session->opt->ssl_flags >> SSLF_TLS_VERSION_SHIFT) & SSLF_TLS_VERSION_MASK;
+    int polar_major;
+    int polar_minor;
+    switch (tls_version_min)
       {
-	const int tls_version_min = (session->opt->ssl_flags >> SSLF_TLS_VERSION_SHIFT) & SSLF_TLS_VERSION_MASK;
-	int polar_major;
-	int polar_minor;
-	switch (tls_version_min)
-	  {
-	  case TLS_VER_1_0:
-	  default:
-	    polar_major = SSL_MAJOR_VERSION_3;
-	    polar_minor = SSL_MINOR_VERSION_1;
-	    break;
+      case TLS_VER_1_0:
+      default:
+	polar_major = SSL_MAJOR_VERSION_3;
+	polar_minor = SSL_MINOR_VERSION_1;
+	break;
 #if defined(SSL_MAJOR_VERSION_3) && defined(SSL_MINOR_VERSION_2)
-	  case TLS_VER_1_1:
-	    polar_major = SSL_MAJOR_VERSION_3;
-	    polar_minor = SSL_MINOR_VERSION_2;
-	    break;
+      case TLS_VER_1_1:
+	polar_major = SSL_MAJOR_VERSION_3;
+	polar_minor = SSL_MINOR_VERSION_2;
+	break;
 #endif
 #if defined(SSL_MAJOR_VERSION_3) && defined(SSL_MINOR_VERSION_3)
-	  case TLS_VER_1_2:
-	    polar_major = SSL_MAJOR_VERSION_3;
-	    polar_minor = SSL_MINOR_VERSION_3;
-	    break;
+      case TLS_VER_1_2:
+	polar_major = SSL_MAJOR_VERSION_3;
+	polar_minor = SSL_MINOR_VERSION_3;
+	break;
 #endif
-	  }
-	ssl_set_min_version(ks_ssl->ctx, polar_major, polar_minor);
       }
+    ssl_set_min_version(ks_ssl->ctx, polar_major, polar_minor);
+  }
 
-      /* Initialise BIOs */
-      ALLOC_OBJ_CLEAR (ks_ssl->ct_in, endless_buffer);
-      ALLOC_OBJ_CLEAR (ks_ssl->ct_out, endless_buffer);
-      ssl_set_bio (ks_ssl->ctx, endless_buf_read, ks_ssl->ct_in,
-	  endless_buf_write, ks_ssl->ct_out);
-    }
+  /* Initialise BIOs */
+  ALLOC_OBJ_CLEAR (ks_ssl->ct_in, endless_buffer);
+  ALLOC_OBJ_CLEAR (ks_ssl->ct_out, endless_buffer);
+  ssl_set_bio (ks_ssl->ctx, endless_buf_read, ks_ssl->ct_in,
+      endless_buf_write, ks_ssl->ct_out);
 }
 
 void

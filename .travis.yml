@@ -1,0 +1,12 @@
+language: c
+compiler:
+  - gcc
+  - clang
+
+before_script:
+  - sudo apt-get install liblzo2-dev libpam-dev
+
+script:
+  - autoreconf -vi
+  - ./configure --disable-snappy --enable-strict
+  - make check
